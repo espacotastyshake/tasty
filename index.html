@@ -11,9 +11,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // ==========================================================
-        // COLE SUAS CHAVES DO FIREBASE ABAIXO:
-        // ==========================================================
+        // Configuração do Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyANpiWqCHpIHO97Y6qGkl9DTaL6psKhBC8",
             authDomain: "tasty-web-c3420.firebaseapp.com",
@@ -24,7 +22,6 @@
             measurementId: "G-SS99GFG0JF"
         };
 
-        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
@@ -37,25 +34,27 @@
             const listaProdutosBadge = document.getElementById('listaProdutosBadge');
             const novoProdutoNomeInput = document.getElementById('novoProdutoNome');
 
-            // Listas padrão caso o banco esteja vazio
             let produtosPadrao = ['Shake F1', 'Fiber Concentrate', 'Herbal Tea', 'Nutri Soup', 'Multifiber'];
 
             async function carregarProdutos() {
-                const querySnapshot = await getDocs(collection(db, "produtos"));
-                let produtos = [];
-                querySnapshot.forEach((doc) => {
-                    produtos.push({ id: doc.id, ...doc.data() });
-                });
+                try {
+                    const querySnapshot = await getDocs(collection(db, "produtos"));
+                    let produtos = [];
+                    querySnapshot.forEach((doc) => {
+                        produtos.push({ id: doc.id, ...doc.data() });
+                    });
 
-                // Se não houver produtos cadastrados no Firebase, cria os padrões
-                if (produtos.length === 0) {
-                    for (let p of produtosPadrao) {
-                        await addDoc(collection(db, "produtos"), { nome: p });
+                    if (produtos.length === 0) {
+                        for (let p of produtosPadrao) {
+                            await addDoc(collection(db, "produtos"), { nome: p });
+                        }
+                        return carregarProdutos();
                     }
-                    return carregarProdutos();
-                }
 
-                atualizarSelectProdutos(produtos);
+                    atualizarSelectProdutos(produtos);
+                } catch (error) {
+                    console.error("Erro ao carregar produtos:", error);
+                }
             }
 
             function atualizarSelectProdutos(produtos) {
@@ -63,18 +62,16 @@
                 listaProdutosBadge.innerHTML = '';
 
                 produtos.forEach(prod => {
-                    // Preenche o select
                     const opt = document.createElement('option');
                     opt.value = prod.nome;
                     opt.textContent = prod.nome;
                     selectProduto.appendChild(opt);
 
-                    // Preenche as tags visuais
                     const badge = document.createElement('span');
-                    badge.className = 'inline-flex items-center bg-slate-100 text-slate-700 text-xs px-3 py-1 rounded-full border border-slate-200';
+                    badge.className = 'inline-flex items-center bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-full border border-slate-200';
                     badge.innerHTML = `
                         ${prod.nome}
-                        <button type="button" onclick="removerProduto('${prod.id}')" class="ml-2 text-slate-400 hover:text-red-600 font-bold">&times;</button>
+                        <button type="button" onclick="removerProduto('${prod.id}')" class="ml-2 text-slate-400 hover:text-red-600 font-bold px-1">&times;</button>
                     `;
                     listaProdutosBadge.appendChild(badge);
                 });
@@ -98,12 +95,16 @@
             }
 
             async function carregarClientes() {
-                const querySnapshot = await getDocs(collection(db, "clientes"));
-                let clientes = [];
-                querySnapshot.forEach((doc) => {
-                    clientes.push({ id: doc.id, ...doc.data() });
-                });
-                renderizarTabela(clientes);
+                try {
+                    const querySnapshot = await getDocs(collection(db, "clientes"));
+                    let clientes = [];
+                    querySnapshot.forEach((doc) => {
+                        clientes.push({ id: doc.id, ...doc.data() });
+                    });
+                    renderizarTabela(clientes);
+                } catch (error) {
+                    console.error("Erro ao carregar clientes:", error);
+                }
             }
 
             function calcularDiasRestantes(dataVendaStr, quantidade, dose) {
@@ -140,13 +141,13 @@
                     let linhaCor = '';
 
                     if (diasRestantes <= 0 || item.quantidade < item.dose) {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🔴 Produto Esgotado</span>`;
-                        linhaCor = 'bg-red-50/30';
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap">🔴 Esgotado</span>`;
+                        linhaCor = 'bg-red-50/40';
                     } else if (diasRestantes <= 5) {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">🟡 Acabando (Repor)</span>`;
-                        linhaCor = 'bg-amber-50/30';
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 whitespace-nowrap">🟡 Acabando</span>`;
+                        linhaCor = 'bg-amber-50/40';
                     } else {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">🟢 Em Uso</span>`;
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 whitespace-nowrap">🟢 Em Uso</span>`;
                         linhaCor = '';
                     }
 
@@ -157,21 +158,21 @@
                     const linkWhats = `https://wa.me/55${item.telefone.replace(/\D/g, '')}?text=${mensagemWhats}`;
 
                     const tr = document.createElement('tr');
-                    tr.className = `${linhaCor} hover:bg-slate-50 transition`;
+                    tr.className = `${linhaCor} hover:bg-slate-50 transition border-b border-slate-100`;
                     tr.innerHTML = `
-                        <td class="px-6 py-4 font-medium text-slate-900">${item.cliente}</td>
-                        <td class="px-6 py-4 text-slate-600">${item.produto} <span class="text-xs text-slate-400">(${item.quantidade} ${unidadeTexto})</span></td>
-                        <td class="px-6 py-4 text-slate-600">${dataFormatada}</td>
-                        <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
-                        <td class="px-6 py-4">${statusBadge}</td>
-                        <td class="px-6 py-4 text-right space-x-1">
-                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
+                        <td class="px-4 sm:px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${item.cliente}</td>
+                        <td class="px-4 sm:px-6 py-4 text-slate-600 whitespace-nowrap">${item.produto} <span class="text-xs text-slate-400">(${item.quantidade} ${unidadeTexto})</span></td>
+                        <td class="px-4 sm:px-6 py-4 text-slate-600 whitespace-nowrap">${dataFormatada}</td>
+                        <td class="px-4 sm:px-6 py-4 font-semibold text-slate-700 whitespace-nowrap">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
+                        <td class="px-4 sm:px-6 py-4">${statusBadge}</td>
+                        <td class="px-4 sm:px-6 py-4 text-right space-x-1 whitespace-nowrap">
+                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
                                 WhatsApp
                             </a>
-                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
+                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
                                 Renovar
                             </button>
-                            <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
+                            <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1 p-2" title="Excluir">
                                 Excluir
                             </button>
                         </td>
@@ -192,9 +193,14 @@
                     dataVenda: new Date().toISOString().split('T')[0]
                 };
 
-                await addDoc(collection(db, "clientes"), novoCliente);
-                vendaForm.reset();
-                carregarClientes();
+                try {
+                    await addDoc(collection(db, "clientes"), novoCliente);
+                    vendaForm.reset();
+                    carregarClientes();
+                } catch (error) {
+                    alert("Erro ao gravar no Firebase. Verifique a consola (F12).");
+                    console.error(error);
+                }
             });
 
             window.renovarCompra = async function(id) {
@@ -212,107 +218,30 @@
                 }
             }
 
-            // Inicialização
             carregarProdutos();
             carregarClientes();
         });
     </script>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen p-4 sm:p-6">
+<body class="bg-slate-50 text-slate-800 min-h-screen p-3 sm:p-6">
     <div class="max-w-6xl mx-auto">
-        <!-- Cabeçalho com Logo Arredondada -->
-        <header class="mb-8 text-center flex flex-col items-center">
-            <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-md border-2 border-emerald-500 mb-4 flex items-center justify-center bg-white">
+        <!-- Cabeçalho -->
+        <header class="mb-6 sm:mb-8 text-center flex flex-col items-center">
+            <div class="w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-md border-2 border-emerald-500 mb-3 sm:mb-4 flex items-center justify-center bg-white">
                 <img src="logo.png" alt="Logo Tasty Shake" class="w-full h-full object-cover">
             </div>
-            <h1 class="text-3xl font-bold text-slate-900 mb-2">Controle de Clientes e Reposição</h1>
-            <p class="text-slate-600">Monitore o consumo dos produtos e saiba a hora exata de fazer uma nova venda.</p>
+            <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 mb-1 sm:mb-2">Controle de Clientes e Reposição</h1>
+            <p class="text-xs sm:text-sm text-slate-600 px-2">Monitore o consumo dos produtos e saiba a hora exata de fazer uma nova venda.</p>
         </header>
 
         <!-- Seção de Cadastro de Produtos -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">Gerenciar Produtos</h2>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-5 sm:mb-6">
+            <h2 class="text-base sm:text-lg font-semibold text-slate-900 mb-3">Gerenciar Produtos</h2>
             <form id="produtoForm" class="flex flex-col sm:flex-row gap-3 items-end">
                 <div class="flex-1 w-full">
                     <label class="block text-xs font-medium text-slate-600 mb-1">Nome do Novo Produto</label>
-                    <input type="text" id="novoProdutoNome" placeholder="Ex: Shake F1, Nutri Soup, Chá Herbal Tea..." required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <input type="text" id="novoProdutoNome" placeholder="Ex: Shake F1, Nutri Soup..." required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 </div>
-                <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-5 py-2 rounded-lg text-sm transition shadow-sm h-[38px]">
+                <button type="submit" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white font-medium px-5 py-2 rounded-lg text-sm transition shadow-sm h-[38px]">
                     Adicionar Produto
-                </button>
-            </form>
-            <div id="listaProdutosBadge" class="flex flex-wrap gap-2 mt-4"></div>
-        </div>
-
-        <!-- Formulário de Cadastro de Vendas -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">Cadastrar Nova Venda</h2>
-            <form id="vendaForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Nome do Cliente</label>
-                    <input type="text" id="cliente" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">WhatsApp / Telefone</label>
-                    <input type="text" id="telefone" placeholder="Ex: 79999999999" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Produto</label>
-                    <select id="produto" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                        <option value="">Selecione um produto</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Quantidade Total</label>
-                    <input type="number" id="quantidade" min="1" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Unidade de Medida</label>
-                    <select id="unidade" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                        <option value="Cápsulas">Cápsulas</option>
-                        <option value="Gramas (g)">Gramas (g)</option>
-                        <option value="Sachês">Sachês</option>
-                        <option value="Doses">Doses</option>
-                        <option value="Comprimidos">Comprimidos</option>
-                        <option value="ML">ML</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Dose Diária</label>
-                    <input type="number" id="dose" min="1" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                </div>
-                <div class="sm:col-span-2 lg:col-span-6 flex justify-end mt-2">
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition shadow-sm">
-                        Cadastrar e Calcular Lembrete
-                    </button>
-                </div>
-            </form>
-        </div>
-
-        <!-- Tabela de Clientes -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-slate-900">Acompanhamento de Consumo</h2>
-                <span id="totalClientes" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">0 cadastros</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                            <th class="px-6 py-3 font-semibold">Cliente</th>
-                            <th class="px-6 py-3 font-semibold">Produto</th>
-                            <th class="px-6 py-3 font-semibold">Previsão Término</th>
-                            <th class="px-6 py-3 font-semibold">Dias Restantes</th>
-                            <th class="px-6 py-3 font-semibold">Status / Alerta</th>
-                            <th class="px-6 py-3 font-semibold text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabelaClientes" class="divide-y divide-slate-100 text-sm">
-                        <!-- Preenchido via Firebase -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
+                </button
