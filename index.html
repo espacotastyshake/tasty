@@ -4,14 +4,224 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Controle de Clientes e Reposição - Tasty Shake</title>
-    <!-- Tailwind CSS para um design moderno e limpo -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK (Versão Modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // ==========================================================
+        // COLE SUAS CHAVES DO FIREBASE ABAIXO:
+        // ==========================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyANpiWqCHpIHO97Y6qGkl9DTaL6psKhBC8",
+            authDomain: "tasty-web-c3420.firebaseapp.com",
+            projectId: "tasty-web-c3420",
+            storageBucket: "tasty-web-c3420.firebasestorage.app",
+            messagingSenderId: "216354493205",
+            appId: "1:216354493205:web:7933fef0403f792b6a8f1c"
+            measurementId: "G-SS99GFG0JF"
+        };
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const vendaForm = document.getElementById('vendaForm');
+            const produtoForm = document.getElementById('produtoForm');
+            const tabelaClientes = document.getElementById('tabelaClientes');
+            const totalClientesEl = document.getElementById('totalClientes');
+            const selectProduto = document.getElementById('produto');
+            const listaProdutosBadge = document.getElementById('listaProdutosBadge');
+            const novoProdutoNomeInput = document.getElementById('novoProdutoNome');
+
+            // Listas padrão caso o banco esteja vazio
+            let produtosPadrao = ['Shake F1', 'Fiber Concentrate', 'Herbal Tea', 'Nutri Soup', 'Multifiber'];
+
+            async function carregarProdutos() {
+                const querySnapshot = await getDocs(collection(db, "produtos"));
+                let produtos = [];
+                querySnapshot.forEach((doc) => {
+                    produtos.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Se não houver produtos cadastrados no Firebase, cria os padrões
+                if (produtos.length === 0) {
+                    for (let p of produtosPadrao) {
+                        await addDoc(collection(db, "produtos"), { nome: p });
+                    }
+                    return carregarProdutos();
+                }
+
+                atualizarSelectProdutos(produtos);
+            }
+
+            function atualizarSelectProdutos(produtos) {
+                selectProduto.innerHTML = '<option value="">Selecione um produto</option>';
+                listaProdutosBadge.innerHTML = '';
+
+                produtos.forEach(prod => {
+                    // Preenche o select
+                    const opt = document.createElement('option');
+                    opt.value = prod.nome;
+                    opt.textContent = prod.nome;
+                    selectProduto.appendChild(opt);
+
+                    // Preenche as tags visuais
+                    const badge = document.createElement('span');
+                    badge.className = 'inline-flex items-center bg-slate-100 text-slate-700 text-xs px-3 py-1 rounded-full border border-slate-200';
+                    badge.innerHTML = `
+                        ${prod.nome}
+                        <button type="button" onclick="removerProduto('${prod.id}')" class="ml-2 text-slate-400 hover:text-red-600 font-bold">&times;</button>
+                    `;
+                    listaProdutosBadge.appendChild(badge);
+                });
+            }
+
+            produtoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const nomeProd = novoProdutoNomeInput.value.trim();
+                if (nomeProd) {
+                    await addDoc(collection(db, "produtos"), { nome: nomeProd });
+                    novoProdutoNomeInput.value = '';
+                    carregarProdutos();
+                }
+            });
+
+            window.removerProduto = async function(id) {
+                if (confirm('Deseja remover este produto?')) {
+                    await deleteDoc(doc(db, "produtos", id));
+                    carregarProdutos();
+                }
+            }
+
+            async function carregarClientes() {
+                const querySnapshot = await getDocs(collection(db, "clientes"));
+                let clientes = [];
+                querySnapshot.forEach((doc) => {
+                    clientes.push({ id: doc.id, ...doc.data() });
+                });
+                renderizarTabela(clientes);
+            }
+
+            function calcularDiasRestantes(dataVendaStr, quantidade, dose) {
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+
+                const dataVenda = new Date(dataVendaStr + 'T00:00:00');
+                const dataTermino = new Date(dataVenda);
+                dataTermino.setDate(dataVenda.getDate() + (quantidade >= dose ? Math.floor(quantidade / dose) : 0));
+
+                const diffTempo = dataTermino - hoje;
+                const diasRestantes = Math.ceil(diffTempo / (1000 * 60 * 60 * 24));
+
+                return { diasRestantes, dataTermino };
+            }
+
+            function renderizarTabela(clientes) {
+                tabelaClientes.innerHTML = '';
+                totalClientesEl.textContent = `${clientes.length} ${clientes.length === 1 ? 'cadastro' : 'cadastros'}`;
+
+                if (clientes.length === 0) {
+                    tabelaClientes.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-slate-400">Nenhum cliente cadastrado ainda.</td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                clientes.forEach((item) => {
+                    const { diasRestantes, dataTermino } = calcularDiasRestantes(item.dataVenda, item.quantidade, item.dose);
+                    
+                    let statusBadge = '';
+                    let linhaCor = '';
+
+                    if (diasRestantes <= 0 || item.quantidade < item.dose) {
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🔴 Produto Esgotado</span>`;
+                        linhaCor = 'bg-red-50/30';
+                    } else if (diasRestantes <= 5) {
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">🟡 Acabando (Repor)</span>`;
+                        linhaCor = 'bg-amber-50/30';
+                    } else {
+                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">🟢 Em Uso</span>`;
+                        linhaCor = '';
+                    }
+
+                    const dataFormatada = dataTermino.toLocaleDateString('pt-BR');
+                    const unidadeTexto = item.unidade || 'unidades';
+                    
+                    const mensagemWhats = encodeURIComponent(`Olá ${item.cliente}! Tudo bem? Passando para saber como você está se sentindo com o uso do ${item.produto} e se já está precisando repor o seu estoque para não ficar sem!`);
+                    const linkWhats = `https://wa.me/55${item.telefone.replace(/\D/g, '')}?text=${mensagemWhats}`;
+
+                    const tr = document.createElement('tr');
+                    tr.className = `${linhaCor} hover:bg-slate-50 transition`;
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-slate-900">${item.cliente}</td>
+                        <td class="px-6 py-4 text-slate-600">${item.produto} <span class="text-xs text-slate-400">(${item.quantidade} ${unidadeTexto})</span></td>
+                        <td class="px-6 py-4 text-slate-600">${dataFormatada}</td>
+                        <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
+                        <td class="px-6 py-4">${statusBadge}</td>
+                        <td class="px-6 py-4 text-right space-x-1">
+                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
+                                WhatsApp
+                            </a>
+                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
+                                Renovar
+                            </button>
+                            <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
+                                Excluir
+                            </button>
+                        </td>
+                    `;
+                    tabelaClientes.appendChild(tr);
+                });
+            }
+
+            vendaForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const novoCliente = {
+                    cliente: document.getElementById('cliente').value,
+                    telefone: document.getElementById('telefone').value,
+                    produto: selectProduto.value,
+                    quantidade: parseInt(document.getElementById('quantidade').value),
+                    unidade: document.getElementById('unidade').value,
+                    dose: parseInt(document.getElementById('dose').value),
+                    dataVenda: new Date().toISOString().split('T')[0]
+                };
+
+                await addDoc(collection(db, "clientes"), novoCliente);
+                vendaForm.reset();
+                carregarClientes();
+            });
+
+            window.renovarCompra = async function(id) {
+                if (confirm(`Deseja registrar uma nova compra para hoje?`)) {
+                    const dataHoje = new Date().toISOString().split('T')[0];
+                    await updateDoc(doc(db, "clientes", id), { dataVenda: dataHoje });
+                    carregarClientes();
+                }
+            }
+
+            window.removerCliente = async function(id) {
+                if (confirm('Deseja realmente excluir este registro?')) {
+                    await deleteDoc(doc(db, "clientes", id));
+                    carregarClientes();
+                }
+            }
+
+            // Inicialização
+            carregarProdutos();
+            carregarClientes();
+        });
+    </script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen p-4 sm:p-6">
     <div class="max-w-6xl mx-auto">
         <!-- Cabeçalho com Logo Arredondada -->
         <header class="mb-8 text-center flex flex-col items-center">
-            <!-- Logo Arredondada -->
             <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-md border-2 border-emerald-500 mb-4 flex items-center justify-center bg-white">
                 <img src="Logo.jpeg" alt="Logo Tasty Shake" class="w-full h-full object-cover">
             </div>
@@ -31,10 +241,7 @@
                     Adicionar Produto
                 </button>
             </form>
-            <!-- Lista de produtos cadastrados (etiquetas) -->
-            <div id="listaProdutosBadge" class="flex flex-wrap gap-2 mt-4">
-                <!-- Preenchido via JS -->
-            </div>
+            <div id="listaProdutosBadge" class="flex flex-wrap gap-2 mt-4"></div>
         </div>
 
         <!-- Formulário de Cadastro de Vendas -->
@@ -101,195 +308,11 @@
                         </tr>
                     </thead>
                     <tbody id="tabelaClientes" class="divide-y divide-slate-100 text-sm">
-                        <!-- Preenchido via JavaScript -->
+                        <!-- Preenchido via Firebase -->
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
-
-    <!-- Script de Lógica -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const vendaForm = document.getElementById('vendaForm');
-            const produtoForm = document.getElementById('produtoForm');
-            const tabelaClientes = document.getElementById('tabelaClientes');
-            const totalClientesEl = document.getElementById('totalClientes');
-            const selectProduto = document.getElementById('produto');
-            const listaProdutosBadge = document.getElementById('listaProdutosBadge');
-            const novoProdutoNomeInput = document.getElementById('novoProdutoNome');
-
-            // Carregar dados salvos ou criar padrões iniciais
-            let produtos = JSON.parse(localStorage.getItem('produtos_tasty')) || [
-                'Shake F1', 'Fiber Concentrate', 'Herbal Tea', 'Nutri Soup', 'Multifiber'
-            ];
-            let clientes = JSON.parse(localStorage.getItem('clientes_tasty')) || [];
-
-            function salvarDados() {
-                localStorage.setItem('produtos_tasty', JSON.stringify(produtos));
-                localStorage.setItem('clientes_tasty', JSON.stringify(clientes));
-            }
-
-            function atualizarSelectProdutos() {
-                selectProduto.innerHTML = '<option value="">Selecione um produto</option>';
-                produtos.forEach(prod => {
-                    const opt = document.createElement('option');
-                    opt.value = prod;
-                    opt.textContent = prod;
-                    selectProduto.appendChild(opt);
-                });
-
-                // Renderiza as tags visuais dos produtos
-                listaProdutosBadge.innerHTML = '';
-                if (produtos.length === 0) {
-                    listaProdutosBadge.innerHTML = '<span class="text-xs text-slate-400">Nenhum produto cadastrado.</span>';
-                    return;
-                }
-
-                produtos.forEach((prod, idx) => {
-                    const badge = document.createElement('span');
-                    badge.className = 'inline-flex items-center bg-slate-100 text-slate-700 text-xs px-3 py-1 rounded-full border border-slate-200';
-                    badge.innerHTML = `
-                        ${prod}
-                        <button type="button" onclick="removerProduto(${idx})" class="ml-2 text-slate-400 hover:text-red-600 font-bold">&times;</button>
-                    `;
-                    listaProdutosBadge.appendChild(badge);
-                });
-            }
-
-            produtoForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const nomeProd = novoProdutoNomeInput.value.trim();
-                if (nomeProd && !produtos.includes(nomeProd)) {
-                    produtos.push(nomeProd);
-                    salvarDados();
-                    atualizarSelectProdutos();
-                    novoProdutoNomeInput.value = '';
-                } else {
-                    alert('Produto já existe ou nome inválido.');
-                }
-            });
-
-            window.removerProduto = function(idx) {
-                if (confirm(`Deseja remover o produto "${produtos[idx]}" da lista?`)) {
-                    produtos.splice(idx, 1);
-                    salvarDados();
-                    atualizarSelectProdutos();
-                }
-            }
-
-            function calcularDiasRestantes(dataVendaStr, quantidade, dose) {
-                const hoje = new Date();
-                hoje.setHours(0, 0, 0, 0);
-
-                const dataVenda = new Date(dataVendaStr + 'T00:00:00');
-                const dataTermino = new Date(dataVenda);
-                dataTermino.setDate(dataVenda.getDate() + (quantidade >= dose ? Math.floor(quantidade / dose) : 0));
-
-                const diffTempo = dataTermino - hoje;
-                const diasRestantes = Math.ceil(diffTempo / (1000 * 60 * 60 * 24));
-
-                return { diasRestantes, dataTermino };
-            }
-
-            function renderizarTabela() {
-                tabelaClientes.innerHTML = '';
-                totalClientesEl.textContent = `${clientes.length} ${clientes.length === 1 ? 'cadastro' : 'cadastros'}`;
-
-                if (clientes.length === 0) {
-                    tabelaClientes.innerHTML = `
-                        <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-slate-400">Nenhum cliente cadastrado ainda.</td>
-                        </tr>
-                    `;
-                    return;
-                }
-
-                clientes.forEach((item, index) => {
-                    const { diasRestantes, dataTermino } = calcularDiasRestantes(item.dataVenda, item.quantidade, item.dose);
-                    
-                    let statusBadge = '';
-                    let linhaCor = '';
-
-                    if (diasRestantes <= 0 || item.quantidade < item.dose) {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🔴 Produto Esgotado</span>`;
-                        linhaCor = 'bg-red-50/30';
-                    } else if (diasRestantes <= 5) {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">🟡 Acabando (Repor)</span>`;
-                        linhaCor = 'bg-amber-50/30';
-                    } else {
-                        statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">🟢 Em Uso</span>`;
-                        linhaCor = '';
-                    }
-
-                    const dataFormatada = dataTermino.toLocaleDateString('pt-BR');
-                    const unidadeTexto = item.unidade || 'unidades';
-                    
-                    const mensagemWhats = encodeURIComponent(`Olá ${item.cliente}! Tudo bem? Passando para saber como você está se sentindo com o uso do ${item.produto} e se já está precisando repor o seu estoque para não ficar sem!`);
-                    const linkWhats = `https://wa.me/55${item.telefone.replace(/\D/g, '')}?text=${mensagemWhats}`;
-
-                    const tr = document.createElement('tr');
-                    tr.className = `${linhaCor} hover:bg-slate-50 transition`;
-                    tr.innerHTML = `
-                        <td class="px-6 py-4 font-medium text-slate-900">${item.cliente}</td>
-                        <td class="px-6 py-4 text-slate-600">${item.produto} <span class="text-xs text-slate-400">(${item.quantidade} ${unidadeTexto})</span></td>
-                        <td class="px-6 py-4 text-slate-600">${dataFormatada}</td>
-                        <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
-                        <td class="px-6 py-4">${statusBadge}</td>
-                        <td class="px-6 py-4 text-right space-x-1">
-                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
-                                WhatsApp
-                            </a>
-                            <button onclick="renovarCompra(${index})" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
-                                Renovar
-                            </button>
-                            <button onclick="removerCliente(${index})" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
-                                Excluir
-                            </button>
-                        </td>
-                    `;
-                    tabelaClientes.appendChild(tr);
-                });
-            }
-
-            vendaForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const novoCliente = {
-                    cliente: document.getElementById('cliente').value,
-                    telefone: document.getElementById('telefone').value,
-                    produto: selectProduto.value,
-                    quantidade: parseInt(document.getElementById('quantidade').value),
-                    unidade: document.getElementById('unidade').value,
-                    dose: parseInt(document.getElementById('dose').value),
-                    dataVenda: new Date().toISOString().split('T')[0]
-                };
-
-                clientes.push(novoCliente);
-                salvarDados();
-                renderizarTabela();
-                vendaForm.reset();
-            });
-
-            window.renovarCompra = function(index) {
-                if (confirm(`Deseja registrar uma nova compra para ${clientes[index].cliente} hoje?`)) {
-                    clientes[index].dataVenda = new Date().toISOString().split('T')[0];
-                    salvarDados();
-                    renderizarTabela();
-                }
-            }
-
-            window.removerCliente = function(index) {
-                if (confirm('Deseja realmente excluir este registro?')) {
-                    clientes.splice(index, 1);
-                    salvarDados();
-                    renderizarTabela();
-                }
-            }
-
-            // Inicialização
-            atualizarSelectProdutos();
-            renderizarTabela();
-        });
-    </script>
 </body>
 </html>
