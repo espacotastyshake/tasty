@@ -103,6 +103,7 @@
                 querySnapshot.forEach((doc) => {
                     clientes.push({ id: doc.id, ...doc.data() });
                 });
+                clientesCache = clientes;
                 renderizarTabela(clientes);
             }
 
@@ -122,12 +123,40 @@
 
             function renderizarTabela(clientes) {
                 tabelaClientes.innerHTML = '';
+
+                let emUso = 0, repor = 0, esgotados = 0;
+
+                clientes.forEach((item) => {
+                    const { diasRestantes } = calcularDiasRestantes(item.dataVenda, item.quantidade, item.dose);
+                    if (diasRestantes <= 0 || item.quantidade < item.dose) {
+                        esgotados++;
+                    } else if (diasRestantes <= 5) {
+                        repor++;
+                    } else {
+                        emUso++;
+                    }
+                });
+
                 totalClientesEl.textContent = `${clientes.length} ${clientes.length === 1 ? 'cadastro' : 'cadastros'}`;
+                document.getElementById('dashTotalClientes').textContent = clientes.length;
+                document.getElementById('dashEmUso').textContent = emUso;
+                document.getElementById('dashRepor').textContent = repor;
+                document.getElementById('dashEsgotados').textContent = esgotados;
+
+                const alertBanner = document.getElementById('alertBanner');
+                if (esgotados + repor > 0) {
+                    alertBanner.style.display = 'block';
+                    alertBanner.textContent = `⚠️ ${esgotados + repor} cliente(s) precisam de atenção: ${esgotados} esgotado(s) e ${repor} para reposição.`;
+                } else {
+                    alertBanner.style.display = 'none';
+                }
 
                 if (clientes.length === 0) {
                     tabelaClientes.innerHTML = `
                         <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-slate-400">Nenhum cliente cadastrado ainda.</td>
+                            <td colspan="6" class="px-6 py-8 text-center text-slate-400">
+                                Nenhum cliente encontrado.
+                            </td>
                         </tr>
                     `;
                     return;
@@ -135,7 +164,7 @@
 
                 clientes.forEach((item) => {
                     const { diasRestantes, dataTermino } = calcularDiasRestantes(item.dataVenda, item.quantidade, item.dose);
-                    
+
                     let statusBadge = '';
                     let linhaCor = '';
 
@@ -147,12 +176,11 @@
                         linhaCor = 'bg-amber-50/30';
                     } else {
                         statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">🟢 Em Uso</span>`;
-                        linhaCor = '';
                     }
 
                     const dataFormatada = dataTermino.toLocaleDateString('pt-BR');
                     const unidadeTexto = item.unidade || 'unidades';
-                    
+
                     const mensagemWhats = encodeURIComponent(`Olá ${item.cliente}! Tudo bem? Passando para saber como você está se sentindo com o uso do ${item.produto} e se já está precisando repor o seu estoque para não ficar sem!`);
                     const linkWhats = `https://wa.me/55${item.telefone.replace(/\D/g, '')}?text=${mensagemWhats}`;
 
@@ -165,10 +193,10 @@
                         <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
                         <td class="px-6 py-4">${statusBadge}</td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
+                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
                                 WhatsApp
                             </a>
-                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
+                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
                                 Renovar
                             </button>
                             <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
@@ -180,7 +208,7 @@
                 });
             }
 
-            vendaForm.addEventListener('submit', async (e) => {
+                        vendaForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const novoCliente = {
                     cliente: document.getElementById('cliente').value,
@@ -212,11 +240,257 @@
                 }
             }
 
+            // Busca rápida e filtros
+            let clientesCache = [];
+
+            function aplicarBusca(texto = '', apenasReposicao = false) {
+                const termo = texto.trim().toLowerCase();
+                const filtrados = clientesCache.filter(item => {
+                    const { diasRestantes } = calcularDiasRestantes(item.dataVenda, item.quantidade, item.dose);
+                    const precisaReposicao = diasRestantes <= 5 || item.quantidade < item.dose;
+                    const corresponde = !termo ||
+                        String(item.cliente || '').toLowerCase().includes(termo) ||
+                        String(item.produto || '').toLowerCase().includes(termo) ||
+                        String(item.telefone || '').toLowerCase().includes(termo);
+                    return corresponde && (!apenasReposicao || precisaReposicao);
+                });
+                renderizarTabela(filtrados);
+            }
+
+            const buscaCliente = document.getElementById('buscaCliente');
+            buscaCliente.addEventListener('input', () => aplicarBusca(buscaCliente.value, false));
+
+            document.getElementById('btnMostrarTodos').addEventListener('click', () => {
+                buscaCliente.value = '';
+                aplicarBusca('', false);
+            });
+
+            document.getElementById('btnMostrarReposicao').addEventListener('click', () => {
+                buscaCliente.value = '';
+                aplicarBusca('', true);
+            });
+
             // Inicialização
             carregarProdutos();
             carregarClientes();
         });
     </script>
+
+<style>
+/* ===== Ajustes mobile / responsivo ===== */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+button, a, input, select { min-height: 44px; }
+input, select { font-size: 16px !important; } /* evita zoom automático no iPhone */
+
+@media (max-width: 640px) {
+    body { padding: 12px !important; }
+
+    header { margin-bottom: 20px !important; }
+    header > div:first-child {
+        width: 76px !important;
+        height: 76px !important;
+        margin-bottom: 12px !important;
+    }
+    header h1 {
+        font-size: 1.45rem !important;
+        line-height: 1.2 !important;
+        margin-bottom: 8px !important;
+    }
+    header p {
+        font-size: .88rem !important;
+        line-height: 1.35 !important;
+        max-width: 340px;
+    }
+
+    /* Cards principais */
+    #produtoForm,
+    #vendaForm { gap: 12px !important; }
+
+    #produtoForm button,
+    #vendaForm button {
+        width: 100%;
+        min-height: 46px;
+    }
+
+    /* Tags de produtos */
+    #listaProdutosBadge span {
+        max-width: 100%;
+        word-break: break-word;
+    }
+
+    /* Área de acompanhamento */
+    #tabelaClientesWrapper {
+        overflow: visible !important;
+    }
+
+    /* No celular escondemos a tabela tradicional e mostramos cartões */
+    #tabelaClientesTable thead {
+        display: none;
+    }
+    #tabelaClientesTable,
+    #tabelaClientesTable tbody,
+    #tabelaClientesTable tr,
+    #tabelaClientesTable td {
+        display: block;
+        width: 100%;
+    }
+    #tabelaClientesTable tr {
+        margin-bottom: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 1px 3px rgba(15,23,42,.06);
+    }
+    #tabelaClientesTable td {
+        padding: 8px 14px !important;
+        border: 0 !important;
+    }
+    #tabelaClientesTable td:nth-child(1) {
+        padding-top: 14px !important;
+        font-size: 1rem;
+    }
+    #tabelaClientesTable td:nth-child(2)::before { content: "Produto: "; font-weight: 600; color:#64748b; }
+    #tabelaClientesTable td:nth-child(3)::before { content: "Previsão: "; font-weight: 600; color:#64748b; }
+    #tabelaClientesTable td:nth-child(4)::before { content: "Restante: "; font-weight: 600; color:#64748b; }
+    #tabelaClientesTable td:nth-child(5) { padding-top: 4px !important; }
+    #tabelaClientesTable td:nth-child(6) {
+        padding: 10px 14px 14px !important;
+        text-align: left !important;
+    }
+    #tabelaClientesTable td:nth-child(6) a,
+    #tabelaClientesTable td:nth-child(6) button {
+        min-height: 42px;
+        margin: 3px 2px 3px 0 !important;
+    }
+
+    /* Mantém a barra do título compacta */
+    #acompanhamentoHeader {
+        gap: 8px;
+        align-items: center;
+    }
+    #acompanhamentoHeader h2 {
+        font-size: 1rem !important;
+    }
+}
+</style>
+
+
+<style>
+/* ===== Dashboard profissional ===== */
+.dashboard-grid {
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:12px;
+    margin-bottom:24px;
+}
+.stat-card {
+    position:relative;
+    overflow:hidden;
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 2px 8px rgba(15,23,42,.05);
+}
+.stat-card .stat-label {
+    color:#64748b;
+    font-size:.72rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+}
+.stat-card .stat-value {
+    color:#0f172a;
+    font-size:1.65rem;
+    line-height:1;
+    font-weight:800;
+    margin-top:8px;
+}
+.stat-card .stat-icon {
+    position:absolute;
+    right:12px;
+    top:12px;
+    width:36px;
+    height:36px;
+    border-radius:11px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:1.1rem;
+    background:#f1f5f9;
+}
+.quick-bar {
+    display:flex;
+    gap:10px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    margin-bottom:18px;
+}
+.quick-actions {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+.quick-btn {
+    min-height:42px;
+    border-radius:11px;
+    padding:9px 14px;
+    font-size:.82rem;
+    font-weight:700;
+    border:1px solid #e2e8f0;
+    background:#fff;
+    color:#334155;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+.quick-btn:hover { background:#f8fafc; }
+.search-box {
+    position:relative;
+    min-width:260px;
+    flex:1;
+    max-width:420px;
+}
+.search-box input {
+    width:100%;
+    padding-left:40px !important;
+    border-radius:11px !important;
+}
+.search-icon {
+    position:absolute;
+    left:13px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#94a3b8;
+    pointer-events:none;
+}
+.alert-banner {
+    display:none;
+    margin-bottom:18px;
+    border:1px solid #fde68a;
+    background:#fffbeb;
+    color:#92400e;
+    border-radius:14px;
+    padding:12px 14px;
+    font-size:.84rem;
+    font-weight:600;
+}
+@media (max-width: 800px) {
+    .dashboard-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 640px) {
+    .dashboard-grid { gap:9px; margin-bottom:18px; }
+    .stat-card { padding:13px; border-radius:14px; }
+    .stat-card .stat-value { font-size:1.35rem; }
+    .stat-card .stat-icon { width:30px;height:30px;border-radius:9px;font-size:.95rem; }
+    .quick-bar { display:block; }
+    .search-box { max-width:none; min-width:0; margin-bottom:9px; }
+    .quick-actions { display:grid; grid-template-columns:1fr 1fr; }
+    .quick-btn { width:100%; }
+}
+</style>
+
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen p-4 sm:p-6">
     <div class="max-w-6xl mx-auto">
@@ -229,8 +503,48 @@
             <p class="text-slate-600">Monitore o consumo dos produtos e saiba a hora exata de fazer uma nova venda.</p>
         </header>
 
+
+        <!-- Dashboard -->
+        <section class="dashboard-grid" aria-label="Resumo">
+            <div class="stat-card">
+                <div class="stat-icon">👥</div>
+                <div class="stat-label">Clientes</div>
+                <div id="dashTotalClientes" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🟢</div>
+                <div class="stat-label">Em uso</div>
+                <div id="dashEmUso" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🟡</div>
+                <div class="stat-label">Repor em breve</div>
+                <div id="dashRepor" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🔴</div>
+                <div class="stat-label">Esgotados</div>
+                <div id="dashEsgotados" class="stat-value">0</div>
+            </div>
+        </section>
+
+        <div id="alertBanner" class="alert-banner"></div>
+
+        <!-- Busca rápida -->
+        <div class="quick-bar">
+            <div class="search-box">
+                <span class="search-icon">🔎</span>
+                <input id="buscaCliente" type="search" placeholder="Buscar cliente, produto ou telefone..." autocomplete="off"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+            </div>
+            <div class="quick-actions">
+                <button type="button" id="btnMostrarTodos" class="quick-btn">👥 Todos</button>
+                <button type="button" id="btnMostrarReposicao" class="quick-btn">🟡 Reposição</button>
+            </div>
+        </div>
+
         <!-- Seção de Cadastro de Produtos -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-5 sm:mb-6">
             <h2 class="text-lg font-semibold text-slate-900 mb-4">Gerenciar Produtos</h2>
             <form id="produtoForm" class="flex flex-col sm:flex-row gap-3 items-end">
                 <div class="flex-1 w-full">
@@ -245,7 +559,7 @@
         </div>
 
         <!-- Formulário de Cadastro de Vendas -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-6 sm:mb-8">
             <h2 class="text-lg font-semibold text-slate-900 mb-4">Cadastrar Nova Venda</h2>
             <form id="vendaForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div>
@@ -292,11 +606,11 @@
         <!-- Tabela de Clientes -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-slate-900">Acompanhamento de Consumo</h2>
+                <div><h2 class="text-lg font-semibold text-slate-900">Acompanhamento de Consumo</h2><p class="text-xs text-slate-400 mt-0.5">Controle de reposição dos clientes</p></div>
                 <span id="totalClientes" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">0 cadastros</span>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+            <div id="tabelaClientesWrapper" class="overflow-x-auto">
+                <table id="tabelaClientesTable" class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                             <th class="px-6 py-3 font-semibold">Cliente</th>
@@ -313,6 +627,10 @@
                 </table>
             </div>
         </div>
+
+        <footer class="text-center py-7 text-xs text-slate-400">
+            Tasty Shake • Controle de Clientes e Reposição
+        </footer>
     </div>
 </body>
 </html>
