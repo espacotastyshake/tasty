@@ -54,6 +54,7 @@
             let filtroReposicao = false;
             let produtosCache = [];
             let vendaEmAndamento = false;
+            let renovacaoEmAndamento = false;
 
             // Não manter a sessão entre recargas/aberturas da página.
             // Isso faz a tela de login aparecer novamente ao abrir o site.
@@ -276,7 +277,7 @@
                             <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
                                 WhatsApp
                             </a>
-                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Renovar para a data de hoje">
+                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Registrar nova compra e descontar estoque">
                                 Renovar
                             </button>
                             <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
@@ -437,13 +438,89 @@
                 if (!itens.length) lista.textContent = 'Nenhuma movimentação registrada.';
             }
 
-            window.renovarCompra = async function(id) {
-                if (confirm(`Deseja registrar uma nova compra para hoje?`)) {
-                    const dataHoje = new Date().toISOString().split('T')[0];
-                    await updateDoc(doc(db, "clientes", id), { dataVenda: dataHoje });
-                    carregarClientes();
-                }
+            // Renovação com venda: uma transação atualiza cliente, saldo e histórico.
+            window.renovarCompra = function(id) {
+                const cliente = clientesCache.find(c => c.id === id);
+                if (!cliente) { alert('Cadastro não encontrado. Atualize a página.'); return; }
+                const produto = produtosCache.find(p => p.id === cliente.produtoId) ||
+                    produtosCache.find(p => p.nome === cliente.produto);
+                if (!produto) { alert('Produto do cadastro não encontrado. Confira o cadastro do produto antes de renovar.'); return; }
+                document.getElementById('renovacaoClienteId').value = id;
+                document.getElementById('renovacaoProdutoId').value = produto.id;
+                document.getElementById('renovacaoClienteNome').textContent = cliente.cliente || 'Cliente';
+                document.getElementById('renovacaoProdutoNome').textContent = produto.nome;
+                document.getElementById('renovacaoQuantidade').value = cliente.quantidade || '';
+                document.getElementById('renovacaoDose').value = cliente.dose || '';
+                document.getElementById('renovacaoUnidade').value = cliente.unidade || 'Doses';
+                document.getElementById('renovacaoEmbalagens').value = 1;
+                const agora = new Date();
+                const dataLocal = new Date(agora.getTime() - agora.getTimezoneOffset()*60000).toISOString().slice(0,10);
+                document.getElementById('renovacaoData').value = dataLocal;
+                document.getElementById('modalRenovacao').classList.remove('hidden');
+                document.getElementById('renovacaoEmbalagens').focus();
+            };
+            function fecharRenovacao() {
+                if (renovacaoEmAndamento) return;
+                document.getElementById('modalRenovacao').classList.add('hidden');
             }
+            document.getElementById('fecharRenovacao').addEventListener('click', fecharRenovacao);
+            document.getElementById('cancelarRenovacao').addEventListener('click', fecharRenovacao);
+            document.getElementById('renovacaoForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (renovacaoEmAndamento) return;
+                const id = document.getElementById('renovacaoClienteId').value;
+                const produtoId = document.getElementById('renovacaoProdutoId').value;
+                const embalagens = Number(document.getElementById('renovacaoEmbalagens').value);
+                const quantidade = Number(document.getElementById('renovacaoQuantidade').value);
+                const dose = Number(document.getElementById('renovacaoDose').value);
+                const unidade = document.getElementById('renovacaoUnidade').value;
+                const dataVenda = document.getElementById('renovacaoData').value;
+                const produto = produtosCache.find(p => p.id === produtoId);
+                if (!produto || !id) { alert('Cadastro ou produto não encontrado.'); return; }
+                if (![embalagens,quantidade,dose].every(v => Number.isSafeInteger(v) && v > 0)) {
+                    alert('Informe quantidades inteiras maiores que zero.'); return;
+                }
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) { alert('Informe uma data válida.'); return; }
+                const btn = document.getElementById('confirmarRenovacao');
+                renovacaoEmAndamento = true;
+                btn.disabled = true;
+                btn.textContent = 'Registrando compra...';
+                try {
+                    const clienteRef = doc(db,'clientes',id);
+                    const produtoRef = doc(db,'produtos',produtoId);
+                    const movimentoRef = doc(collection(db,'movimentacoes_estoque'));
+                    await runTransaction(db, async tx => {
+                        const [clienteSnap, produtoSnap] = await Promise.all([tx.get(clienteRef),tx.get(produtoRef)]);
+                        if (!clienteSnap.exists()) throw new Error('Cliente não encontrado.');
+                        if (!produtoSnap.exists()) throw new Error('Produto não encontrado.');
+                        const saldo = Number(produtoSnap.data().estoque ?? 0);
+                        if (!Number.isSafeInteger(saldo) || saldo < 0) throw new Error('Saldo de estoque inválido.');
+                        if (saldo < embalagens) throw new Error(`Estoque insuficiente: apenas ${saldo} embalagem(ns) disponível(is).`);
+                        const clienteAtual = clienteSnap.data();
+                        const produtoAtual = produtoSnap.data();
+                        if (clienteAtual.produtoId && clienteAtual.produtoId !== produtoId) throw new Error('O produto deste cliente mudou. Atualize a página.');
+                        if (!clienteAtual.produtoId && clienteAtual.produto !== produtoAtual.nome) throw new Error('O produto deste cadastro não corresponde ao estoque selecionado.');
+                        tx.update(produtoRef, {estoque:saldo-embalagens});
+                        tx.update(clienteRef, {dataVenda, quantidade, dose, unidade, produtoId,
+                            embalagensVendidas:embalagens, estoqueBaixado:true});
+                        tx.set(movimentoRef, {produtoId, produto:produtoAtual.nome, tipo:'saida_venda',
+                            origem:'renovacao', quantidade:embalagens, saldoAnterior:saldo,
+                            saldoPosterior:saldo-embalagens, vendaId:id,
+                            cliente:clienteAtual.cliente || '', criadoEm:serverTimestamp()});
+                    });
+                    document.getElementById('modalRenovacao').classList.add('hidden');
+                    try { await Promise.all([carregarProdutos(), carregarClientes(), carregarMovimentacoes()]); }
+                    catch (refreshError) { console.error('Falha ao atualizar a tela:',refreshError); alert('Compra registrada e estoque descontado. Atualize a página para ver os dados.'); return; }
+                    alert('Nova compra registrada! Estoque descontado e reposição atualizada.');
+                } catch (error) {
+                    console.error('Erro na renovação:',error);
+                    alert('A compra NÃO foi registrada: '+(error.message || 'erro desconhecido'));
+                } finally {
+                    renovacaoEmAndamento = false;
+                    btn.disabled = false;
+                    btn.textContent = 'Confirmar compra e descontar estoque';
+                }
+            });
 
             window.removerCliente = async function(id) {
                 if (confirm('Excluir este registro? O estoque NÃO será devolvido automaticamente. Faça um ajuste de entrada no estoque se houver devolução física.')) {
@@ -663,6 +740,31 @@
         });
       }
     </script>
+
+    <!-- Renovação de cliente existente com nova venda e baixa automática -->
+    <div id="modalRenovacao" class="hidden fixed inset-0 z-50 bg-slate-900/60 p-3 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="tituloRenovacao">
+      <div class="bg-white max-w-lg mx-auto my-4 sm:my-12 rounded-2xl shadow-2xl p-5 sm:p-7">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div><h2 id="tituloRenovacao" class="text-xl font-bold text-slate-900">Renovar e registrar nova venda</h2><p class="text-sm text-slate-600 mt-1">A compra descontará embalagens do estoque automaticamente.</p></div>
+          <button id="fecharRenovacao" type="button" class="text-slate-600 text-2xl px-3 min-h-[44px]" aria-label="Fechar">×</button>
+        </div>
+        <div class="bg-emerald-50 rounded-xl p-3 mb-4 text-sm"><strong id="renovacaoClienteNome"></strong><div id="renovacaoProdutoNome" class="text-slate-700 mt-1"></div></div>
+        <form id="renovacaoForm" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <input type="hidden" id="renovacaoClienteId"><input type="hidden" id="renovacaoProdutoId">
+          <label class="block text-sm font-medium">Embalagens vendidas<input id="renovacaoEmbalagens" type="number" min="1" step="1" value="1" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 min-h-[48px] text-base"></label>
+          <label class="block text-sm font-medium">Data da compra<input id="renovacaoData" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 min-h-[48px] text-base"></label>
+          <label class="block text-sm font-medium">Quantidade total (para reposição)<input id="renovacaoQuantidade" type="number" min="1" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 min-h-[48px] text-base"></label>
+          <label class="block text-sm font-medium">Dose diária<input id="renovacaoDose" type="number" min="1" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 p-3 min-h-[48px] text-base"></label>
+          <label class="block text-sm font-medium sm:col-span-2">Unidade de medida<select id="renovacaoUnidade" class="mt-1 w-full rounded-lg border border-slate-300 p-3 min-h-[48px] text-base"><option>Cápsulas</option><option>Gramas (g)</option><option>Sachês</option><option>Doses</option><option>Comprimidos</option><option>ML</option></select></label>
+          <p class="text-xs text-slate-600 sm:col-span-2">A quantidade total e a dose diária continuam sendo usadas para calcular a próxima reposição. Não criaremos um novo cadastro de cliente.</p>
+          <div class="sm:col-span-2 flex flex-col gap-3">
+            <button id="confirmarRenovacao" type="submit" class="w-full min-h-[50px] bg-emerald-700 text-white rounded-xl font-semibold px-4 py-3 disabled:opacity-50">Confirmar compra e descontar estoque</button>
+            <button id="cancelarRenovacao" type="button" class="w-full min-h-[48px] bg-slate-100 text-slate-800 rounded-xl font-medium px-4 py-3">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
 </body>
 </html>
                    
