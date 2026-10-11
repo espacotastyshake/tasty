@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Controle de Clientes e Reposição - Tasty Shake</title>
+    <!-- Instalação do aplicativo no Android e iPhone -->
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#075b23">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Tasty Shake">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK (Versão Modular) -->
@@ -436,4 +445,21 @@
                     </thead>
                     <tbody id="tabelaClientes" class="divide-y divide-slate-100 text-sm">
                         <!-- Preenchido via Firebase -->
-      
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+      // Registra o service worker necessário para instalação do PWA.
+      // Nenhum dado de clientes ou autenticação é armazenado em cache pelo worker.
+      if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js', { scope: './' })
+            .catch(error => console.warn('Não foi possível registrar o PWA:', error));
+        });
+      }
+    </script>
+</body>
+</html>
+                   
