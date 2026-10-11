@@ -41,6 +41,8 @@
             const loginMessage = document.getElementById('loginMessage');
             const logoutButton = document.getElementById('logoutButton');
             let dadosCarregados = false;
+            let clientesCache = [];
+            let filtroReposicao = false;
 
             // Não manter a sessão entre recargas/aberturas da página.
             // Isso faz a tela de login aparecer novamente ao abrir o site.
@@ -79,7 +81,7 @@
                     if (!dadosCarregados) {
                         dadosCarregados = true;
                         try { await carregarProdutos(); await carregarClientes(); }
-                        catch (error) { console.error(error); alert('Não foi possível carregar os dados. Confira as regras do Firestore.'); }
+                        catch (error) { console.error('Falha ao carregar dados:', error); alert('Não foi possível carregar os dados: ' + (error.code || error.message || 'erro desconhecido')); }
                     }
                 } else {
                     appContainer.style.display = 'none';
@@ -434,11 +436,4 @@
                     </thead>
                     <tbody id="tabelaClientes" class="divide-y divide-slate-100 text-sm">
                         <!-- Preenchido via Firebase -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-                   
+      
