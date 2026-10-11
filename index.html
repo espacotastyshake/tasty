@@ -269,7 +269,7 @@
                     tr.className = `${linhaCor} hover:bg-slate-50 transition`;
                     tr.innerHTML = `
                         <td class="px-6 py-4 font-medium text-slate-900">${item.cliente}</td>
-                        <td class="px-6 py-4 text-slate-600">${item.produto} <span class="text-xs text-slate-400">(${item.quantidade} ${unidadeTexto})</span></td>
+                        <td class="px-6 py-4 text-slate-600"><span class="produto-info"><span class="produto-nome">${item.produto}</span> <span class="text-xs text-slate-400 produto-detalhe">(${item.quantidade} ${unidadeTexto})</span></span></td>
                         <td class="px-6 py-4 text-slate-600">${dataFormatada}</td>
                         <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
                         <td class="px-6 py-4">${statusBadge}</td>
@@ -563,6 +563,13 @@
         #tabelaClientes td::before { font-size: 12px; color: #64748b; font-weight: 700; flex: 0 0 38%; text-align: left; }
         #tabelaClientes td:nth-child(1)::before { content: "Cliente"; }
         #tabelaClientes td:nth-child(2)::before { content: "Produto"; }
+        /* Nome do produto inteiro e detalhes em linha separada no celular. */
+        #tabelaClientes td:nth-child(2) { display: grid; grid-template-columns: 38% minmax(0, 1fr); align-items: start; column-gap: 12px; }
+        #tabelaClientes td:nth-child(2)::before { min-width: 0; }
+        #tabelaClientes .produto-info { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; gap: 3px; text-align: right; }
+        #tabelaClientes .produto-nome { display: block; max-width: 100%; font-weight: 600; overflow-wrap: normal; word-break: normal; hyphens: none; }
+        #tabelaClientes .produto-detalhe { display: block; max-width: 100%; line-height: 1.4; overflow-wrap: normal; word-break: normal; }
+
         #tabelaClientes td:nth-child(3)::before { content: "Término"; }
         #tabelaClientes td:nth-child(4)::before { content: "Restam"; }
         #tabelaClientes td:nth-child(5)::before { content: "Situação"; }
