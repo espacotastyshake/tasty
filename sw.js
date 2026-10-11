@@ -1,3 +1,3 @@
-// PWA install support. Network only: never cache private customer data.
-self.addEventListener('install', () => self.skipWaiting());
+// Não armazenar HTML ou dados do Firebase em cache.
+self.addEventListener('install', event => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));

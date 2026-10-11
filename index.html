@@ -18,7 +18,7 @@
     <!-- Firebase SDK (Versão Modular) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, inMemoryPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         // ==========================================================
@@ -52,6 +52,8 @@
             let dadosCarregados = false;
             let clientesCache = [];
             let filtroReposicao = false;
+            let produtosCache = [];
+            let vendaEmAndamento = false;
 
             // Não manter a sessão entre recargas/aberturas da página.
             // Isso faz a tela de login aparecer novamente ao abrir o site.
@@ -89,7 +91,7 @@
                     appContainer.style.display = 'block';
                     if (!dadosCarregados) {
                         dadosCarregados = true;
-                        try { await carregarProdutos(); await carregarClientes(); }
+                        try { await carregarProdutos(); await carregarClientes(); await carregarMovimentacoes(); }
                         catch (error) { console.error('Falha ao carregar dados:', error); alert('Não foi possível carregar os dados: ' + (error.code || error.message || 'erro desconhecido')); }
                     }
                 } else {
@@ -126,7 +128,9 @@
                     return carregarProdutos();
                 }
 
+                produtosCache = produtos;
                 atualizarSelectProdutos(produtos);
+                renderizarEstoque();
             }
 
             function atualizarSelectProdutos(produtos) {
@@ -136,7 +140,7 @@
                 produtos.forEach(prod => {
                     // Preenche o select
                     const opt = document.createElement('option');
-                    opt.value = prod.nome;
+                    opt.value = prod.id;
                     opt.textContent = prod.nome;
                     selectProduto.appendChild(opt);
 
@@ -155,14 +159,16 @@
                 e.preventDefault();
                 const nomeProd = novoProdutoNomeInput.value.trim();
                 if (nomeProd) {
-                    await addDoc(collection(db, "produtos"), { nome: nomeProd });
+                    await addDoc(collection(db, "produtos"), { nome: nomeProd, estoque: 0 });
                     novoProdutoNomeInput.value = '';
                     carregarProdutos();
                 }
             });
 
             window.removerProduto = async function(id) {
-                if (confirm('Deseja remover este produto?')) {
+                if (confirm('Excluir este produto? Faça isso somente se não houver estoque ou vendas associadas.')) {
+                    const p = produtosCache.find(p => p.id === id);
+                    if (p && Number(p.estoque || 0) > 0) { alert('Produto com estoque disponível. Zere o estoque antes de excluir.'); return; }
                     await deleteDoc(doc(db, "produtos", id));
                     carregarProdutos();
                 }
@@ -282,22 +288,154 @@
                 });
             }
 
+            // Venda e baixa de estoque são uma única transação: não há venda sem baixa.
             vendaForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (vendaEmAndamento) return;
+                const botao = vendaForm.querySelector('button[type="submit"]');
+                const produtoId = selectProduto.value;
+                const produtoSelecionado = produtosCache.find(p => p.id === produtoId);
+                const embalagens = Number(document.getElementById('embalagensVendidas').value);
+                const quantidade = Number(document.getElementById('quantidade').value);
+                const dose = Number(document.getElementById('dose').value);
+                if (!produtoSelecionado) { alert('Selecione um produto.'); return; }
+                if (!Number.isSafeInteger(embalagens) || embalagens <= 0 ||
+                    !Number.isSafeInteger(quantidade) || quantidade <= 0 ||
+                    !Number.isSafeInteger(dose) || dose <= 0) {
+                    alert('Preencha as quantidades com números inteiros maiores que zero.'); return;
+                }
                 const novoCliente = {
-                    cliente: document.getElementById('cliente').value,
-                    telefone: document.getElementById('telefone').value,
-                    produto: selectProduto.value,
-                    quantidade: parseInt(document.getElementById('quantidade').value),
+                    cliente: document.getElementById('cliente').value.trim(),
+                    telefone: document.getElementById('telefone').value.trim(),
+                    produto: produtoSelecionado.nome,
+                    produtoId,
+                    embalagensVendidas: embalagens,
+                    estoqueBaixado: true,
+                    quantidade,
                     unidade: document.getElementById('unidade').value,
-                    dose: parseInt(document.getElementById('dose').value),
+                    dose,
                     dataVenda: new Date().toISOString().split('T')[0]
                 };
-
-                await addDoc(collection(db, "clientes"), novoCliente);
-                vendaForm.reset();
-                carregarClientes();
+                vendaEmAndamento = true;
+                botao.disabled = true;
+                botao.textContent = 'Salvando venda...';
+                try {
+                    const produtoRef = doc(db, 'produtos', produtoId);
+                    const vendaRef = doc(collection(db, 'clientes'));
+                    const movimentoRef = doc(collection(db, 'movimentacoes_estoque'));
+                    await runTransaction(db, async (tx) => {
+                        const snapshot = await tx.get(produtoRef);
+                        if (!snapshot.exists()) throw new Error('Produto não encontrado.');
+                        const saldo = Number(snapshot.data().estoque ?? 0);
+                        if (!Number.isSafeInteger(saldo) || saldo < 0) throw new Error('Estoque inválido. Verifique o cadastro do produto.');
+                        if (saldo < embalagens) throw new Error(`Estoque insuficiente: ${saldo} embalagem(ns) disponível(is).`);
+                        tx.update(produtoRef, { estoque: saldo - embalagens });
+                        tx.set(vendaRef, novoCliente);
+                        tx.set(movimentoRef, {
+                            produtoId, produto: produtoSelecionado.nome, tipo: 'saida_venda',
+                            quantidade: embalagens, saldoAnterior: saldo, saldoPosterior: saldo - embalagens,
+                            vendaId: vendaRef.id, cliente: novoCliente.cliente, criadoEm: serverTimestamp()
+                        });
+                    });
+                    vendaForm.reset();
+                    await Promise.all([carregarProdutos(), carregarClientes(), carregarMovimentacoes()]);
+                    alert('Venda registrada e estoque atualizado com sucesso.');
+                } catch (error) {
+                    console.error('Erro ao salvar venda:', error);
+                    alert('Venda não registrada: ' + (error.message || 'erro desconhecido'));
+                } finally {
+                    vendaEmAndamento = false;
+                    botao.disabled = false;
+                    botao.textContent = 'Cadastrar e Calcular Lembrete';
+                }
             });
+
+            function renderizarEstoque() {
+                const lista = document.getElementById('listaEstoque');
+                const select = document.getElementById('produtoEstoque');
+                lista.replaceChildren();
+                select.replaceChildren();
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Selecione um produto';
+                select.appendChild(placeholder);
+                for (const p of produtosCache) {
+                    const saldo = Number(p.estoque ?? 0);
+                    const opcao = document.createElement('option');
+                    opcao.value = p.id;
+                    opcao.textContent = p.nome;
+                    select.appendChild(opcao);
+                    const card = document.createElement('div');
+                    card.className = 'rounded-xl border p-4 flex items-center justify-between gap-3 ' +
+                        (saldo <= 0 ? 'border-red-200 bg-red-50' : saldo <= 5 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white');
+                    const nome = document.createElement('span');
+                    nome.className = 'font-semibold text-slate-800';
+                    nome.textContent = p.nome;
+                    const valor = document.createElement('span');
+                    valor.className = 'text-sm font-bold whitespace-nowrap';
+                    valor.textContent = `${saldo} embalagem(ns)` + (saldo <= 0 ? ' • Esgotado' : saldo <= 5 ? ' • Baixo' : '');
+                    card.append(nome, valor);
+                    lista.appendChild(card);
+                }
+                if (!produtosCache.length) lista.textContent = 'Nenhum produto cadastrado.';
+            }
+
+            document.getElementById('estoqueForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const botao = form.querySelector('button[type="submit"]');
+                const produtoId = document.getElementById('produtoEstoque').value;
+                const quantidade = Number(document.getElementById('quantidadeEstoque').value);
+                const tipo = document.getElementById('tipoMovimento').value;
+                const p = produtosCache.find(p => p.id === produtoId);
+                if (!p || !Number.isSafeInteger(quantidade) || quantidade <= 0) {
+                    alert('Escolha um produto e uma quantidade inteira maior que zero.'); return;
+                }
+                botao.disabled = true;
+                try {
+                    const produtoRef = doc(db, 'produtos', produtoId);
+                    const movimentoRef = doc(collection(db, 'movimentacoes_estoque'));
+                    await runTransaction(db, async (tx) => {
+                        const snap = await tx.get(produtoRef);
+                        if (!snap.exists()) throw new Error('Produto não encontrado.');
+                        const saldo = Number(snap.data().estoque ?? 0);
+                        if (!Number.isSafeInteger(saldo) || saldo < 0) throw new Error('Estoque atual inválido.');
+                        const novoSaldo = tipo === 'entrada' ? saldo + quantidade : saldo - quantidade;
+                        if (!Number.isSafeInteger(novoSaldo) || novoSaldo < 0) throw new Error(`Estoque insuficiente: ${saldo} disponível(is).`);
+                        tx.update(produtoRef, { estoque: novoSaldo });
+                        tx.set(movimentoRef, {
+                            produtoId, produto: p.nome, tipo, quantidade,
+                            saldoAnterior: saldo, saldoPosterior: novoSaldo, criadoEm: serverTimestamp()
+                        });
+                    });
+                    form.reset();
+                    await Promise.all([carregarProdutos(), carregarMovimentacoes()]);
+                    alert('Estoque atualizado.');
+                } catch (error) {
+                    console.error(error);
+                    alert('Não foi possível movimentar o estoque: ' + (error.message || 'erro desconhecido'));
+                } finally { botao.disabled = false; }
+            });
+
+            async function carregarMovimentacoes() {
+                const lista = document.getElementById('historicoEstoque');
+                const snap = await getDocs(collection(db, 'movimentacoes_estoque'));
+                const itens = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                itens.sort((a,b) => (b.criadoEm?.seconds || 0) - (a.criadoEm?.seconds || 0));
+                lista.replaceChildren();
+                for (const m of itens.slice(0, 30)) {
+                    const linha = document.createElement('div');
+                    linha.className = 'border-b border-slate-100 py-3 text-sm flex justify-between gap-3';
+                    const descricao = document.createElement('span');
+                    descricao.textContent = `${m.produto || 'Produto'} — ${m.tipo === 'saida_venda' ? 'Venda' : m.tipo === 'entrada' ? 'Entrada' : 'Saída/ajuste'}${m.cliente ? ' (' + m.cliente + ')' : ''}`;
+                    const quantidade = document.createElement('strong');
+                    quantidade.className = 'whitespace-nowrap';
+                    quantidade.textContent = `${m.tipo === 'entrada' ? '+' : '−'}${m.quantidade}`;
+                    linha.append(descricao, quantidade);
+                    lista.appendChild(linha);
+                }
+                if (!itens.length) lista.textContent = 'Nenhuma movimentação registrada.';
+            }
 
             window.renovarCompra = async function(id) {
                 if (confirm(`Deseja registrar uma nova compra para hoje?`)) {
@@ -308,7 +446,7 @@
             }
 
             window.removerCliente = async function(id) {
-                if (confirm('Deseja realmente excluir este registro?')) {
+                if (confirm('Excluir este registro? O estoque NÃO será devolvido automaticamente. Faça um ajuste de entrada no estoque se houver devolução física.')) {
                     await deleteDoc(doc(db, "clientes", id));
                     carregarClientes();
                 }
@@ -332,8 +470,8 @@
         #buscaCliente { min-height: 48px; width: 100%; font-size: 16px; }
         #btnMostrarTodos, #btnMostrarReposicao { width: 100%; min-height: 48px; margin: 0; }
         #produtoForm { align-items: stretch; gap: 12px; }
-        #produtoForm button[type="submit"], #vendaForm button[type="submit"] { width: 100%; min-height: 48px; height: auto; }
-        #produtoForm input, #vendaForm input, #vendaForm select, #loginForm input { min-height: 46px; font-size: 16px; }
+        #produtoForm button[type="submit"], #vendaForm button[type="submit"], #estoqueForm button[type="submit"] { width: 100%; min-height: 48px; height: auto; }
+        #produtoForm input, #vendaForm input, #vendaForm select, #estoqueForm input, #estoqueForm select, #loginForm input { min-height: 46px; font-size: 16px; }
         #vendaForm { gap: 15px; }
         #vendaForm > div:last-child { margin-top: 6px; }
         #listaProdutosBadge { gap: 10px; }
@@ -427,6 +565,20 @@
             <div id="listaProdutosBadge" class="flex flex-wrap gap-2 mt-4"></div>
         </div>
 
+        <!-- Controle de estoque por embalagem / unidade -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6" aria-label="Controle de estoque">
+            <h2 class="text-lg font-semibold text-slate-900 mb-2">📦 Controle de Estoque</h2>
+            <p class="text-sm text-slate-600 mb-4">Saldo por embalagem. Produtos antigos começam com saldo zero até você registrar a entrada inicial.</p>
+            <div id="listaEstoque" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5"></div>
+            <form id="estoqueForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                <div><label for="produtoEstoque" class="block text-sm font-medium mb-1">Produto</label><select id="produtoEstoque" required class="w-full rounded-lg border border-slate-300 px-3 py-3"></select></div>
+                <div><label for="tipoMovimento" class="block text-sm font-medium mb-1">Movimentação</label><select id="tipoMovimento" class="w-full rounded-lg border border-slate-300 px-3 py-3"><option value="entrada">Entrada de mercadorias</option><option value="ajuste_saida">Saída / ajuste manual</option></select></div>
+                <div><label for="quantidadeEstoque" class="block text-sm font-medium mb-1">Embalagens</label><input id="quantidadeEstoque" type="number" min="1" step="1" required class="w-full rounded-lg border border-slate-300 px-3 py-3"></div>
+                <div class="flex items-end"><button type="submit" class="w-full rounded-xl bg-emerald-700 text-white font-semibold px-5 py-3 min-h-[48px] disabled:opacity-50">Atualizar estoque</button></div>
+            </form>
+            <details class="border-t border-slate-200 pt-4"><summary class="cursor-pointer font-semibold text-sm">Últimas movimentações de estoque</summary><div id="historicoEstoque" class="mt-3"></div></details>
+        </section>
+
         <!-- Formulário de Cadastro de Vendas -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
             <h2 class="text-lg font-semibold text-slate-900 mb-4">Cadastrar Nova Venda</h2>
@@ -463,6 +615,10 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">Dose Diária</label>
                     <input type="number" id="dose" min="1" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div>
+                    <label for="embalagensVendidas" class="block text-xs font-medium text-slate-600 mb-1">Embalagens vendidas (baixa no estoque)</label>
+                    <input type="number" id="embalagensVendidas" min="1" step="1" value="1" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 </div>
                 <div class="sm:col-span-2 lg:col-span-6 flex justify-end mt-2">
                     <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition shadow-sm">
