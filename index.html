@@ -350,7 +350,16 @@
                     document.getElementById('btnFecharVendaSucesso').focus();
                 } catch (error) {
                     console.error('Erro ao salvar venda:', error);
-                    alert('Venda não registrada: ' + (error.message || 'erro desconhecido'));
+                    const mensagemErro = String(error.message || 'Erro desconhecido');
+                    const estoqueInsuficiente = mensagemErro.includes('Estoque insuficiente');
+                    const titulo = document.getElementById('tituloVendaErro');
+                    const descricao = document.getElementById('descricaoVendaErro');
+                    titulo.textContent = estoqueInsuficiente ? 'Estoque insuficiente!' : 'Venda não registrada';
+                    descricao.textContent = estoqueInsuficiente
+                        ? 'Venda não registrada. ' + mensagemErro
+                        : 'Não foi possível registrar a venda. ' + mensagemErro;
+                    document.getElementById('modalVendaErro').classList.remove('hidden');
+                    document.getElementById('btnFecharVendaErro').focus();
                 } finally {
                     vendaEmAndamento = false;
                     botao.disabled = false;
@@ -787,7 +796,21 @@
         <button id="btnFecharVendaSucesso" type="button" class="w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-3 min-h-[50px]">Continuar</button>
       </div>
     </div>
+    <!-- Erro de venda: mensagem personalizada sem endereço do site -->
+    <div id="modalVendaErro" class="hidden fixed inset-0 z-[110] bg-slate-950/60 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="tituloVendaErro" aria-describedby="descricaoVendaErro">
+      <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-7 text-center border border-red-100">
+        <div class="mx-auto mb-4 w-20 h-20 rounded-full bg-red-100 flex items-center justify-center" aria-hidden="true">
+          <svg class="w-12 h-12 text-red-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 7v6"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h2 id="tituloVendaErro" class="text-2xl font-bold text-red-700 mb-3">Estoque insuficiente!</h2>
+        <p id="descricaoVendaErro" class="text-slate-600 text-base leading-relaxed mb-6">Venda não registrada.</p>
+        <button id="btnFecharVendaErro" type="button" class="w-full rounded-xl bg-red-700 hover:bg-red-800 text-white font-semibold py-3 min-h-[50px]">Entendi</button>
+      </div>
+    </div>
     <script>
+      document.getElementById('btnFecharVendaErro').addEventListener('click', () => {
+        document.getElementById('modalVendaErro').classList.add('hidden');
+      });
       document.getElementById('btnFecharVendaSucesso').addEventListener('click', () => {
         document.getElementById('modalVendaSucesso').classList.add('hidden');
       });
