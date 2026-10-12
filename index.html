@@ -51,7 +51,6 @@
             const logoutButton = document.getElementById('logoutButton');
             let dadosCarregados = false;
             let clientesCache = [];
-            let filtroReposicao = false;
             let produtosCache = [];
             let vendaEmAndamento = false;
             let renovacaoEmAndamento = false;
@@ -230,14 +229,11 @@
                  const termo=document.getElementById('buscaCliente').value.trim().toLowerCase();
                  const filtrados=clientesCache.filter(item=>{
                      const {diasRestantes}=calcularDiasRestantes(item.dataVenda,item.quantidade,item.dose);
-                     return (!filtroReposicao || diasRestantes<=5 || item.quantidade<item.dose) &&
-                         (!termo || [item.cliente,item.produto,item.telefone].some(v=>String(v||'').toLowerCase().includes(termo)));
+                     return !termo || [item.cliente,item.produto,item.telefone].some(v=>String(v||'').toLowerCase().includes(termo));
                  });
                  renderizarTabela(filtrados);
              }
              document.getElementById('buscaCliente').addEventListener('input',aplicarBusca);
-             document.getElementById('btnMostrarTodos').addEventListener('click',()=>{filtroReposicao=false;aplicarBusca();});
-             document.getElementById('btnMostrarReposicao').addEventListener('click',()=>{filtroReposicao=true;aplicarBusca();});
 
             function renderizarTabela(clientes) {
                 tabelaClientes.innerHTML = '';
@@ -555,7 +551,6 @@
         #appContainer > section[aria-label="Resumo de clientes"] > div { padding: 14px 12px; }
         #appContainer > section[aria-label="Resumo de clientes"] p:first-child { font-size: .68rem; line-height: 1.4; }
         #buscaCliente { min-height: 48px; width: 100%; font-size: 16px; }
-        #btnMostrarTodos, #btnMostrarReposicao { width: 100%; min-height: 48px; margin: 0; }
         #produtoForm { align-items: stretch; gap: 12px; }
         #produtoForm button[type="submit"], #vendaForm button[type="submit"], #estoqueForm button[type="submit"] { width: 100%; min-height: 48px; height: auto; }
         #produtoForm input, #vendaForm input, #vendaForm select, #estoqueForm input, #estoqueForm select, #loginForm input { min-height: 46px; font-size: 16px; }
@@ -641,8 +636,6 @@
          <div id="alertBanner" class="hidden mb-5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 p-4 text-sm font-semibold" role="status"></div>
          <div class="flex flex-col sm:flex-row gap-3 mb-5">
              <input id="buscaCliente" type="search" placeholder="Buscar cliente, produto ou telefone..." class="flex-1 rounded-xl border border-slate-300 px-4 py-3" aria-label="Buscar clientes">
-             <button id="btnMostrarTodos" type="button" class="rounded-xl bg-white border border-slate-300 px-5 py-3 font-semibold">👥 Todos</button>
-             <button id="btnMostrarReposicao" type="button" class="rounded-xl bg-white border border-slate-300 px-5 py-3 font-semibold">🟡 Reposição</button>
          </div>
         <!-- Seção de Cadastro de Produtos -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
