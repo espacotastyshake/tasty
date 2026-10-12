@@ -156,9 +156,19 @@
                 });
             }
 
+            // Exibe e registra nomes em maiúsculas, preservando acentos.
+            for (const campo of [novoProdutoNomeInput, document.getElementById('cliente')]) {
+                campo.addEventListener('input', () => {
+                    const inicio = campo.selectionStart;
+                    const fim = campo.selectionEnd;
+                    campo.value = campo.value.toLocaleUpperCase('pt-BR');
+                    try { campo.setSelectionRange(inicio, fim); } catch (_) {}
+                });
+            }
+
             produtoForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const nomeProd = novoProdutoNomeInput.value.trim();
+                const nomeProd = novoProdutoNomeInput.value.trim().toLocaleUpperCase('pt-BR');
                 if (nomeProd) {
                     await addDoc(collection(db, "produtos"), { nome: nomeProd, estoque: 0 });
                     novoProdutoNomeInput.value = '';
@@ -306,7 +316,7 @@
                     alert('Preencha as quantidades com números inteiros maiores que zero.'); return;
                 }
                 const novoCliente = {
-                    cliente: document.getElementById('cliente').value.trim(),
+                    cliente: document.getElementById('cliente').value.trim().toLocaleUpperCase('pt-BR'),
                     telefone: document.getElementById('telefone').value.trim(),
                     produto: produtoSelecionado.nome,
                     produtoId,
@@ -640,7 +650,7 @@
             <form id="produtoForm" class="flex flex-col sm:flex-row gap-3 items-end">
                 <div class="flex-1 w-full">
                     <label class="block text-xs font-medium text-slate-600 mb-1">Nome do Novo Produto</label>
-                    <input type="text" id="novoProdutoNome" placeholder="Ex: Shake F1, Nutri Soup, Chá Herbal Tea..." required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <input type="text" id="novoProdutoNome" style="text-transform: uppercase" placeholder="Ex: Shake F1, Nutri Soup, Chá Herbal Tea..." required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 </div>
                 <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-5 py-2 rounded-lg text-sm transition shadow-sm h-[38px]">
                     Adicionar Produto
@@ -669,7 +679,7 @@
             <form id="vendaForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">Nome do Cliente</label>
-                    <input type="text" id="cliente" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <input type="text" id="cliente" style="text-transform: uppercase" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 mb-1">WhatsApp / Telefone</label>
