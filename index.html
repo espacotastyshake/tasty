@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle de Clientes e Reposição - Tasty Shake</title>
+    <title>Controle de Clientes e Reposição - Espaço Mônica Dósea</title>
     <!-- Instalação do aplicativo no Android e iPhone -->
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="theme-color" content="#075b23">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Tasty Shake">
+    <meta name="apple-mobile-web-app-title" content="Espaço Mônica Dósea">
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
@@ -83,7 +83,21 @@
                 }
             });
 
-            logoutButton.addEventListener('click', async () => { await signOut(auth); });
+            logoutButton.addEventListener('click', async () => {
+                logoutButton.disabled = true;
+                try { await signOut(auth); loginUser.focus(); }
+                catch (error) { mostrarAvisoEstoque('Não foi possível sair', 'Tente novamente.', true); }
+                finally { logoutButton.disabled = false; }
+            });
+
+            function mostrarAvisoEstoque(titulo, descricao, erro = false) {
+                const modal = document.getElementById('modalEstoque');
+                modal.dataset.erro = String(erro);
+                document.getElementById('tituloEstoque').textContent = titulo;
+                document.getElementById('descricaoEstoque').textContent = descricao;
+                document.getElementById('iconeEstoque').textContent = erro ? '!' : '✓';
+                if (!modal.open) modal.showModal();
+            }
 
             onAuthStateChanged(auth, async (user) => {
                 if (user && user.email && user.email.toLowerCase() === AUTORIZADO_EMAIL) {
@@ -384,7 +398,7 @@
                     select.appendChild(opcao);
                     const card = document.createElement('div');
                     card.className = 'rounded-xl border p-4 flex items-center justify-between gap-3 ' +
-                        (saldo <= 0 ? 'border-red-200 bg-red-50' : saldo <= 5 ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white');
+                        (saldo <= 0 ? 'border-red-200 bg-red-50' : saldo <= 5 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50');
                     const nome = document.createElement('span');
                     nome.className = 'font-semibold text-slate-800';
                     nome.textContent = p.nome;
@@ -406,7 +420,7 @@
                 const tipo = document.getElementById('tipoMovimento').value;
                 const p = produtosCache.find(p => p.id === produtoId);
                 if (!p || !Number.isSafeInteger(quantidade) || quantidade <= 0) {
-                    alert('Escolha um produto e uma quantidade inteira maior que zero.'); return;
+                    mostrarAvisoEstoque('Confira os dados', 'Escolha um produto e uma quantidade inteira maior que zero.', true); return;
                 }
                 botao.disabled = true;
                 try {
@@ -426,11 +440,13 @@
                         });
                     });
                     form.reset();
-                    await Promise.all([carregarProdutos(), carregarMovimentacoes()]);
-                    alert('Estoque atualizado.');
+                    let avisoAtualizacao = '';
+                    try { await Promise.all([carregarProdutos(), carregarMovimentacoes()]); }
+                    catch (refreshError) { console.error(refreshError); avisoAtualizacao = ' Atualize a página para ver o saldo atualizado.'; }
+                    mostrarAvisoEstoque(tipo === 'entrada' ? 'ENTRADA REALIZADA' : 'SAÍDA REALIZADA', `${quantidade} item(ns) de ${p.nome}.` + avisoAtualizacao);
                 } catch (error) {
                     console.error(error);
-                    alert('Não foi possível movimentar o estoque: ' + (error.message || 'erro desconhecido'));
+                    mostrarAvisoEstoque('Movimentação não realizada', error.message || 'Não foi possível movimentar o estoque. Tente novamente.', true);
                 } finally { botao.disabled = false; }
             });
 
@@ -550,6 +566,16 @@
     </script>
 
     <style>
+      .logout-button { display:inline-flex; align-items:center; justify-content:center; gap:10px; margin-top:16px; min-height:48px; padding:12px 24px; border:1px solid #047857; border-radius:14px; color:white; background:linear-gradient(135deg,#059669,#047857); font-weight:700; box-shadow:0 4px 12px #04785730; transition:background .2s,transform .2s; }
+      .logout-button:hover { background:#065f46; transform:translateY(-1px); }
+      .logout-button:focus-visible { outline:3px solid #34d399; outline-offset:3px; }
+      .logout-button:disabled { opacity:.6; cursor:wait; }
+      #modalEstoque::backdrop { background:rgba(15,23,42,.45); }
+      #modalEstoque { border:1px solid #a7f3d0; border-radius:24px; padding:28px; width:calc(100% - 32px); max-width:380px; text-align:center; background:#ecfdf5; color:#065f46; box-shadow:0 24px 60px #0f172a33; }
+      #modalEstoque[data-erro="true"] { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+      #modalEstoque button { width:100%; min-height:48px; border:0; border-radius:12px; margin-top:24px; background:#047857; color:white; font-weight:700; cursor:pointer; }
+      #modalEstoque[data-erro="true"] button { background:#b91c1c; }
+
       /* Ajustes de toque e leitura para Android e iPhone. Desktop permanece igual. */
       @media (max-width: 639px) {
         body { padding: 14px 12px 28px !important; }
@@ -607,9 +633,9 @@
         <div class="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
             <div class="text-center mb-6">
                 <div class="mx-auto w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-500 mb-4 bg-white flex items-center justify-center">
-                    <img src="logo.png" alt="Logo Tasty Shake" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                    <img src="logo.png" alt="Logo Espaço Mônica Dósea" class="w-full h-full object-cover" onerror="this.style.display='none'">
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900">Tasty Shake</h1>
+                <h1 class="text-2xl font-bold text-slate-900">ESPAÇO MÔNICA DÓSEA</h1>
                 <p class="text-slate-600 mt-1">Entre para acessar o controle de clientes</p>
             </div>
             <form id="loginForm" class="space-y-4">
@@ -630,11 +656,11 @@
         <!-- Cabeçalho com Logo Arredondada -->
         <header class="mb-8 text-center flex flex-col items-center">
             <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-md border-2 border-emerald-500 mb-4 flex items-center justify-center bg-white">
-                <img src="logo.png" alt="Logo Tasty Shake" class="w-full h-full object-cover">
+                <img src="logo.png" alt="Logo Espaço Mônica Dósea" class="w-full h-full object-cover">
             </div>
             <h1 class="text-3xl font-bold text-slate-900 mb-2">Controle de Clientes e Reposição</h1>
             <p class="text-slate-600">Monitore o consumo dos produtos e saiba a hora exata de fazer uma nova venda.</p>
-            <button id="logoutButton" type="button" class="mt-4 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium px-4 py-2 rounded-lg">Sair da conta</button>
+            <button id="logoutButton" type="button" class="logout-button" aria-label="Logout — sair do sistema"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M9 12h12"/></svg><span>Logout</span></button>
         </header>
 
          <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" aria-label="Resumo de clientes">
@@ -785,6 +811,12 @@
       </div>
     </div>
 
+    <dialog id="modalEstoque" aria-labelledby="tituloEstoque" aria-describedby="descricaoEstoque">
+      <div id="iconeEstoque" aria-hidden="true" style="font-size:48px;font-weight:700;margin-bottom:12px">✓</div>
+      <h2 id="tituloEstoque" style="font-size:24px;font-weight:700;margin-bottom:12px">ENTRADA REALIZADA</h2>
+      <p id="descricaoEstoque" style="line-height:1.6"></p>
+      <form method="dialog"><button type="submit" autofocus>Continuar</button></form>
+    </dialog>
     <!-- Confirmação visual de venda, sem alerta nativo e sem URL do navegador -->
     <div id="modalVendaSucesso" class="hidden fixed inset-0 z-[100] bg-slate-950/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloVendaSucesso" aria-describedby="descricaoVendaSucesso">
       <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-7 text-center border border-emerald-100">
