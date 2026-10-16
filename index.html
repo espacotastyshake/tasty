@@ -206,9 +206,17 @@
                 querySnapshot.forEach((doc) => {
                     clientes.push({ id: doc.id, ...doc.data() });
                 });
-                 clientesCache = clientes;
-                 atualizarDashboard();
-                 aplicarBusca();
+                // Venda mais recente sempre no topo: usa o instante do cadastro
+                // (criadoEm) e, para cadastros antigos, a data da venda.
+                const momento = (item) => {
+                    if (item.criadoEm && typeof item.criadoEm.toMillis === 'function') return item.criadoEm.toMillis();
+                    const t = Date.parse((item.dataVenda || '') + 'T23:59:59');
+                    return Number.isNaN(t) ? 0 : t;
+                };
+                clientes.sort((a, b) => momento(b) - momento(a));
+                clientesCache = clientes;
+                atualizarDashboard();
+                aplicarBusca();
             }
 
             function calcularDiasRestantes(dataVendaStr, quantidade, dose) {
@@ -337,7 +345,8 @@
                     quantidade,
                     unidade: document.getElementById('unidade').value,
                     dose,
-                    dataVenda: new Date().toISOString().split('T')[0]
+                    dataVenda: new Date().toISOString().split('T')[0],
+                    criadoEm: serverTimestamp()
                 };
                 vendaEmAndamento = true;
                 botao.disabled = true;
@@ -535,7 +544,7 @@
                         if (clienteAtual.produtoId && clienteAtual.produtoId !== produtoId) throw new Error('O produto deste cliente mudou. Atualize a página.');
                         if (!clienteAtual.produtoId && clienteAtual.produto !== produtoAtual.nome) throw new Error('O produto deste cadastro não corresponde ao estoque selecionado.');
                         tx.update(produtoRef, {estoque:saldo-embalagens});
-                        tx.update(clienteRef, {dataVenda, quantidade, dose, unidade, produtoId,
+                        tx.update(clienteRef, {dataVenda, quantidade, dose, unidade, produtoId, criadoEm: serverTimestamp(),
                             embalagensVendidas:embalagens, estoqueBaixado:true});
                         tx.set(movimentoRef, {produtoId, produto:produtoAtual.nome, tipo:'saida_venda',
                             origem:'renovacao', quantidade:embalagens, saldoAnterior:saldo,
