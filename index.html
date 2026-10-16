@@ -49,6 +49,8 @@
             const loginPassword = document.getElementById('loginPassword');
             const loginMessage = document.getElementById('loginMessage');
             const logoutButton = document.getElementById('logoutButton');
+            const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            const escId = (v) => String(v ?? '').replace(/[^A-Za-z0-9_-]/g, '');
             let dadosCarregados = false;
             let clientesCache = [];
             let produtosCache = [];
@@ -162,8 +164,8 @@
                     const badge = document.createElement('span');
                     badge.className = 'inline-flex items-center bg-slate-100 text-slate-700 text-xs px-3 py-1 rounded-full border border-slate-200';
                     badge.innerHTML = `
-                        ${prod.nome}
-                        <button type="button" onclick="removerProduto('${prod.id}')" class="ml-2 text-slate-400 hover:text-red-600 font-bold">&times;</button>
+                        ${esc(prod.nome)}
+                        <button type="button" onclick="removerProduto('${escId(prod.id)}')" class="ml-2 text-slate-400 hover:text-red-600 font-bold">&times;</button>
                     `;
                     listaProdutosBadge.appendChild(badge);
                 });
@@ -283,24 +285,24 @@
                     const unidadeTexto = item.unidade || 'unidades';
                     
                     const mensagemWhats = encodeURIComponent(`Olá ${item.cliente}! Tudo bem? Passando para saber como você está se sentindo com o uso do ${item.produto} e se já está precisando repor o seu estoque para não ficar sem!`);
-                    const linkWhats = `https://wa.me/55${item.telefone.replace(/\D/g, '')}?text=${mensagemWhats}`;
+                    const linkWhats = `https://wa.me/55${String(item.telefone || '').replace(/\D/g, '')}?text=${mensagemWhats}`;
 
                     const tr = document.createElement('tr');
                     tr.className = `${linhaCor} hover:bg-slate-50 transition`;
                     tr.innerHTML = `
-                        <td class="px-6 py-4 font-medium text-slate-900">${item.cliente}</td>
-                        <td class="px-6 py-4 text-slate-600"><span class="produto-info"><span class="produto-nome">${item.produto}</span> <span class="text-xs text-slate-400 produto-detalhe">(${item.quantidade} ${unidadeTexto})</span></span></td>
+                        <td class="px-6 py-4 font-medium text-slate-900">${esc(item.cliente)}</td>
+                        <td class="px-6 py-4 text-slate-600"><span class="produto-info"><span class="produto-nome">${esc(item.produto)}</span> <span class="text-xs text-slate-400 produto-detalhe">(${esc(item.quantidade)} ${esc(unidadeTexto)})</span></span></td>
                         <td class="px-6 py-4 text-slate-600">${dataFormatada}</td>
                         <td class="px-6 py-4 font-semibold text-slate-700">${item.quantidade < item.dose ? '0' : diasRestantes} dias</td>
                         <td class="px-6 py-4">${statusBadge}</td>
                         <td class="px-6 py-4 text-right space-x-1">
-                            <a href="${linkWhats}" target="_blank" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
+                            <a href="${linkWhats}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Enviar WhatsApp">
                                 WhatsApp
                             </a>
-                            <button onclick="renovarCompra('${item.id}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Registrar nova compra e descontar estoque">
+                            <button onclick="renovarCompra('${escId(item.id)}')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg transition shadow-sm" title="Registrar nova compra e descontar estoque">
                                 Renovar
                             </button>
-                            <button onclick="removerCliente('${item.id}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
+                            <button onclick="removerCliente('${escId(item.id)}')" class="text-slate-400 hover:text-red-600 text-xs font-medium transition ml-1" title="Excluir">
                                 Excluir
                             </button>
                         </td>
